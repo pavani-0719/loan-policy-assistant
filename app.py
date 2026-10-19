@@ -113,7 +113,7 @@ if question:
 
     if target_language != "en":
 
-        translation_response = ollama.chat(
+        translation_response = client.chat(
             model="llama3.2",
             messages=[
                 {
@@ -218,7 +218,7 @@ User Question:
 """
 
 
-    response = ollama.chat(
+    response = client.chat(
         model="llama3.2",
         messages=[
             {
@@ -242,7 +242,7 @@ User Question:
 
     if target_language != "en":
 
-        translation_response = ollama.chat(
+        translation_response = client.chat(
             model="llama3.2",
             messages=[
                 {
