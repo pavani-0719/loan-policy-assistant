@@ -1,27 +1,37 @@
 
 import streamlit as st
 import ollama
-from pathlib import Path
 from rag import search_documents
 
-OLLAMA_API_KEY = st.secrets["OLLAMA_API_KEY"]
-
-client = ollama.Client(
-    host="https://ollama.com",
-    headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"}
-)
-st.write("DEBUG: Ollama client initialized successfully")
+# -----------------------------
+# Page Configuration
+# -----------------------------
 st.set_page_config(
     page_title="Loan Policy Assistant",
     page_icon="🏦",
     layout="centered"
 )
 
+# -----------------------------
+# Ollama Client
+# -----------------------------
+try:
+    OLLAMA_API_KEY = st.secrets["OLLAMA_API_KEY"]
+except (KeyError, FileNotFoundError):
+    st.error(
+        "Ollama API key is missing. "
+        "Add OLLAMA_API_KEY in Streamlit app Secrets."
+    )
+    st.stop()
+
+client = ollama.Client(
+    host="https://ollama.com",
+    headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+)
 
 # -----------------------------
 # Language Selection
 # -----------------------------
-
 languages = {
     "English": "en",
     "Telugu": "te",
@@ -37,8 +47,20 @@ selected_language = st.selectbox(
     "🌐 Select your language",
     list(languages.keys())
 )
-
 target_language = languages[selected_language]
+
+# -----------------------------
+# Title and Description
+# -----------------------------
+st.title("🏦 Loan Policy Assistant")
+st.write(
+    "Ask questions about loan eligibility, documents, "
+    "interest rates, EMI, KYC, fees and repayment policies."
+)
+
+# -----------------------------
+# Example Questions
+# -----------------------------
 example_questions = {
     "English": [
         "What is the minimum age required for a personal loan?",
@@ -74,211 +96,182 @@ example_questions = {
     ]
 }
 
-
-# -----------------------------
-# Title
-# -----------------------------
-
-st.title("🏦 Loan Policy Assistant")
-
-st.write(
-    "Ask questions about loan eligibility, documents, "
-    "interest rates, EMI, KYC, fees and repayment policies."
-)
-
+with st.expander("💡 Example questions"):
+    for example in example_questions[selected_language]:
+        st.markdown(f"- {example}")
 
 # -----------------------------
 # Chat History
 # -----------------------------
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# -----------------------------
+# Ollama Chat Helper
+# -----------------------------
+def ask_ollama(message):
+    result = client.chat(
+        model="llama3.2",
+        messages=[
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
+    )
+
+    # The Ollama Python client returns a response object.
+    return result.message.content.strip()
 
 # -----------------------------
 # User Input
 # -----------------------------
-
-question = st.chat_input(
-    "Ask your loan-related question..."
-)
-
+question = st.chat_input("Ask your loan-related question...")
 
 if question:
-
-    # Keep the original question
     original_question = question
 
-
-    # -----------------------------
-    # Translate question to English
-    # -----------------------------
-
-    if target_language != "en":
-
-        translation_response = client.chat(
-            model="llama3.2",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""
-Translate the following loan-related question into English.
-
-Return ONLY the translated question.
-Do not explain anything.
-
-Question:
-{question}
-"""
-                }
-            ]
-        )
-
-        question = translation_response["message"]["content"]
-
-
-    # -----------------------------
-    # Display user's original question
-    # -----------------------------
+    # Display and save the original question
+    st.session_state.messages.append({
+        "role": "user",
+        "content": original_question
+    })
 
     with st.chat_message("user"):
         st.markdown(original_question)
 
+    try:
+        with st.spinner("Finding relevant loan policy information..."):
 
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": original_question
-        }
-    )
+            # -----------------------------
+            # Translate Question to English
+            # -----------------------------
+            if target_language != "en":
+                question = ask_ollama(
+                    f"""
+Translate this loan-related question into English.
+Return only the translated question.
 
+Question:
+{original_question}
+"""
+                )
 
-    # -----------------------------
-    # Search loan documents
-    # -----------------------------
+            # -----------------------------
+            # Search Loan Documents
+            # -----------------------------
+            results = search_documents(question, top_k=5)
 
-    results = search_documents(
-        question,
-        top_k=5
-    )
+            context_parts = []
+            source_files = []
 
+            for result in results:
+                filename = result.get("filename", "Unknown source")
+                text = result.get("text", "")
 
-    context = ""
-    source_files = []
+                if text.strip():
+                    context_parts.append(
+                        f"SOURCE: {filename}\n{text}"
+                    )
+                    source_files.append(filename)
 
+            context = "\n\n".join(context_parts)
 
-    for result in results:
-
-        filename = result["filename"]
-        text = result["text"]
-
-        context += (
-            "\n\nSOURCE: "
-            + filename
-            + "\n"
-            + text
-        )
-
-        source_files.append(filename)
-
-
-    # -----------------------------
-    # Ask Llama
-    # -----------------------------
-
-    
-prompt = f"""
+            # -----------------------------
+            # Build Prompt
+            # -----------------------------
+            if context.strip():
+                prompt = f"""
 You are a Loan Policy Assistant.
 
-Answer the user's question using ONLY the information
-contained in the retrieved loan policy documents.
+Answer the user's question using only the
+information in the retrieved loan policy documents.
 
-Do not invent information, interest rates, fees,
-or eligibility criteria.
+Rules:
+1. Do not invent information.
+2. Do not make up interest rates, fees, or eligibility criteria.
+3. If the answer is not present in the documents,
+   say that you could not find the information.
+4. Explain the answer in clear, simple language.
+5. Mention important conditions when available.
 
-If the answer is not available in the documents, say:
-"I could not find this information in the available loan policy documents."
-
-Retrieved Documents:
+Retrieved loan policy documents:
 {context}
 
-User Question:
+User question:
+{question}
+"""
+            else:
+                prompt = f"""
+You are a Loan Policy Assistant.
+
+No relevant information was found in the available
+loan policy documents.
+
+Tell the user:
+"I could not find this information in the available
+loan policy documents."
+
+Do not invent an answer.
+
+User question:
 {question}
 """
 
+            # -----------------------------
+            # Generate Answer
+            # -----------------------------
+            answer = ask_ollama(prompt)
 
+            if not answer:
+                answer = (
+                    "The AI service returned an empty answer. "
+                    "Please try again."
+                )
 
-response = client.chat(
-    model="llama3.2",
-    messages=[
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ]
-)
-
-# Read the response safely
-if isinstance(response, dict):
-    answer = response.get("message", {}).get("content", "")
-else:
-    answer = response.message.content
-
-if not answer:
-    st.error("The AI service returned an empty answer. Please check the app logs.")
-    st.stop()
-
-
-    # -----------------------------
-    # Translate answer back
-    # -----------------------------
-
-if target_language != "en":
-
-        translation_response = client.chat(
-            model="llama3.2",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""
-Translate the following loan-policy answer into {selected_language}.
-
-Return ONLY the translated answer.
-Do not add explanations.
+            # -----------------------------
+            # Translate Answer
+            # -----------------------------
+            if target_language != "en":
+                answer = ask_ollama(
+                    f"""
+Translate the following answer into {selected_language}.
+Preserve the meaning and all policy conditions.
+Return only the translated answer.
 
 Answer:
-
 {answer}
 """
-                }
-            ]
-        )
+                )
 
-        answer = translation_response["message"]["content"]
+        # -----------------------------
+        # Display Answer
+        # -----------------------------
+        with st.chat_message("assistant"):
+            st.markdown(answer)
 
+            if source_files:
+                unique_sources = sorted(set(source_files))
+                st.markdown(
+                    "**Sources:** " + ", ".join(unique_sources)
+                )
 
-    # -----------------------------
-    # Display answer
-    # -----------------------------
-
-with st.chat_message("assistant"):
-
-        st.markdown(answer)
-
-        st.markdown(
-            "**Sources:** "
-            + ", ".join(set(source_files))
-        )
-
-
-st.session_state.messages.append(
-        {
+        st.session_state.messages.append({
             "role": "assistant",
             "content": answer
-        }
-    )
+        })
+
+    except Exception as error:
+        # Keep the app usable and avoid displaying secrets.
+        st.error(
+            "Sorry, something went wrong while processing "
+            "your question. Please check the app logs."
+        )
+        print(
+            f"Chat processing error: "
+            f"{type(error).__name__}: {error}"
+        )
