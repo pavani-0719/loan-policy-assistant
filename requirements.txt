@@ -1,8 +1,7 @@
-
-pypdf
-sentence-transformers
-faiss-cpu
 streamlit
 ollama
+sentence-transformers
+faiss-cpu
 torch
 torchvision
+pypdf
