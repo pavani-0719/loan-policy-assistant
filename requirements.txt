@@ -1,6 +1,8 @@
 
-streamlit
 pypdf
 sentence-transformers
 faiss-cpu
+streamlit
 ollama
+torch
+torchvision
