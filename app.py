@@ -127,6 +127,7 @@ if question:
                 {
                     "role": "user",
                     "content": f"""
+                    }
 Translate the following loan-related question into English.
 
 Return ONLY the translated question.
