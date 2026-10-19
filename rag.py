@@ -1,7 +1,9 @@
+
 import os
 import pickle
-import faiss
+from pathlib import Path
 
+import faiss
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
@@ -9,9 +11,6 @@ from sentence_transformers import SentenceTransformer
 # ==========================================
 # SETTINGS
 # ==========================================
-
-
-from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -26,47 +25,42 @@ DATA_FILE = BASE_DIR / "loan_data.pkl"
 
 print("Loading embedding model...")
 
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 print("Embedding model loaded.")
 
 
 # ==========================================
-# READ ALL PDF FILES
+# READ PDF FILES
 # ==========================================
 
 def load_pdfs():
-
     documents = []
 
+    if not DOCUMENT_FOLDER.exists():
+        raise FileNotFoundError(
+            f"Documents folder not found: {DOCUMENT_FOLDER}"
+        )
+
     for filename in os.listdir(DOCUMENT_FOLDER):
-
         if filename.lower().endswith(".pdf"):
-
-            file_path = os.path.join(
-                DOCUMENT_FOLDER,
-                filename
-            )
+            file_path = DOCUMENT_FOLDER / filename
 
             print(f"Reading: {filename}")
 
-            reader = PdfReader(file_path)
-
+            reader = PdfReader(str(file_path))
             full_text = ""
 
             for page in reader.pages:
-
                 text = page.extract_text()
-
                 if text:
                     full_text += text + "\n"
 
-            documents.append({
-                "filename": filename,
-                "text": full_text
-            })
+            if full_text.strip():
+                documents.append({
+                    "filename": filename,
+                    "text": full_text
+                })
 
     return documents
 
@@ -75,28 +69,19 @@ def load_pdfs():
 # SPLIT TEXT INTO CHUNKS
 # ==========================================
 
-def create_chunks(
-    text,
-    chunk_size=500,
-    overlap=100
-):
+def create_chunks(text, chunk_size=500, overlap=100):
+    if overlap >= chunk_size:
+        raise ValueError("overlap must be smaller than chunk_size")
 
     words = text.split()
-
     chunks = []
-
     start = 0
 
     while start < len(words):
-
         end = start + chunk_size
-
-        chunk = " ".join(
-            words[start:end]
-        )
+        chunk = " ".join(words[start:end])
 
         if chunk.strip():
-
             chunks.append(chunk)
 
         start += chunk_size - overlap
@@ -109,171 +94,95 @@ def create_chunks(
 # ==========================================
 
 def create_database():
-
-    print("\n==============================")
-    print("Reading loan policy documents")
-    print("==============================\n")
+    print("Reading loan policy documents...")
 
     documents = load_pdfs()
 
     if not documents:
-
-        print("ERROR: No PDF files found.")
-
-        return
-
-
-    all_chunks = []
-
-    metadata = []
-
-
-    # --------------------------------------
-    # Create chunks
-    # --------------------------------------
-
-    for document in documents:
-
-        chunks = create_chunks(
-            document["text"]
+        raise ValueError(
+            "No readable PDF documents found in the documents folder."
         )
 
+    all_chunks = []
+    metadata = []
+
+    for document in documents:
+        chunks = create_chunks(document["text"])
+
         for chunk in chunks:
-
             all_chunks.append(chunk)
-
             metadata.append({
                 "filename": document["filename"],
                 "text": chunk
             })
 
+    if not all_chunks:
+        raise ValueError(
+            "No text could be extracted from the PDF documents."
+        )
 
-    print(
-        f"\nCreated {len(all_chunks)} text chunks."
-    )
-
-
-    # --------------------------------------
-    # Create embeddings
-    # --------------------------------------
-
-    print("\nCreating embeddings...")
+    print(f"Created {len(all_chunks)} text chunks.")
+    print("Creating embeddings...")
 
     embeddings = model.encode(
         all_chunks,
         show_progress_bar=True
-    )
-
-    embeddings = embeddings.astype(
-        "float32"
-    )
-
-
-    # --------------------------------------
-    # Create FAISS index
-    # --------------------------------------
+    ).astype("float32")
 
     dimension = embeddings.shape[1]
 
-    index = faiss.IndexFlatL2(
-        dimension
-    )
-
+    index = faiss.IndexFlatL2(dimension)
     index.add(embeddings)
 
+    # FAISS expects a string file path
+    faiss.write_index(index, str(INDEX_FILE))
 
-    # --------------------------------------
-    # Save FAISS index
-    # --------------------------------------
+    with open(DATA_FILE, "wb") as file:
+        pickle.dump(metadata, file)
 
-    faiss.write_index(
-        index,
-        INDEX_FILE
-    )
-
-
-    # --------------------------------------
-    # Save metadata
-    # --------------------------------------
-
-    with open(
-        DATA_FILE,
-        "wb"
-    ) as file:
-
-        pickle.dump(
-            metadata,
-            file
-        )
-
-
-    print("\n==============================")
     print("DATABASE CREATED SUCCESSFULLY")
-    print("==============================")
-
-    print(
-        f"PDF files: {len(documents)}"
-    )
-
-    print(
-        f"Text chunks: {len(all_chunks)}"
-    )
-
-    print(
-        f"Vector database: {INDEX_FILE}"
-    )
+    print(f"PDF files: {len(documents)}")
+    print(f"Text chunks: {len(all_chunks)}")
+    print(f"Vector database: {INDEX_FILE}")
 
 
 # ==========================================
 # SEARCH DOCUMENTS
 # ==========================================
 
-def search_documents(
-    query,
-    top_k=5
-):
+def search_documents(query, top_k=5):
+    if not INDEX_FILE.is_file():
+        raise FileNotFoundError(
+            f"FAISS index not found: {INDEX_FILE}"
+        )
 
-    index = faiss.read_index(
-        INDEX_FILE
-    )
+    if not DATA_FILE.is_file():
+        raise FileNotFoundError(
+            f"Metadata file not found: {DATA_FILE}"
+        )
 
+    # FIX: FAISS expects a string path, not a Path object
+    index = faiss.read_index(str(INDEX_FILE))
 
-    with open(
-        DATA_FILE,
-        "rb"
-    ) as file:
-
+    with open(DATA_FILE, "rb") as file:
         metadata = pickle.load(file)
-
-
-    # Convert question into embedding
 
     query_embedding = model.encode(
         [query]
-    )
+    ).astype("float32")
 
-    query_embedding = query_embedding.astype(
-        "float32"
-    )
+    k = min(top_k, index.ntotal)
 
+    if k == 0:
+        return []
 
-    # Search FAISS
-
-    distances, indices = index.search(
-        query_embedding,
-        top_k
-    )
-
+    distances, indices = index.search(query_embedding, k)
 
     results = []
 
-
     for i in indices[0]:
-
-        results.append(
-            metadata[i]
-        )
-
+        if 0 <= i < len(metadata):
+            results.append(metadata[i])
 
     return results
 
@@ -283,6 +192,4 @@ def search_documents(
 # ==========================================
 
 if __name__ == "__main__":
-
     create_database()
-    
