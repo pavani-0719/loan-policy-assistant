@@ -1,8 +1,16 @@
+
 import streamlit as st
 import ollama
+from pathlib import Path
 from rag import search_documents
 
+OLLAMA_API_KEY = st.secrets["OLLAMA_API_KEY"]
 
+client = ollama.Client(
+    host="https://ollama.com",
+    headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+)
+st.write("DEBUG: Ollama client initialized successfully")
 st.set_page_config(
     page_title="Loan Policy Assistant",
     page_icon="🏦",
@@ -228,19 +236,20 @@ User Question:
         ]
     )
 
-
+st.write("DEBUG: reached response section")
+st.write("DEBUG: client exists:", "client" in globals())
     # -----------------------------
     # Get Llama's answer
     # -----------------------------
 
-    answer = response["message"]["content"]
+answer = response["message"]["content"]
 
 
     # -----------------------------
     # Translate answer back
     # -----------------------------
 
-    if target_language != "en":
+if target_language != "en":
 
         translation_response = client.chat(
             model="llama3.2",
@@ -268,7 +277,7 @@ Answer:
     # Display answer
     # -----------------------------
 
-    with st.chat_message("assistant"):
+with st.chat_message("assistant"):
 
         st.markdown(answer)
 
@@ -278,7 +287,7 @@ Answer:
         )
 
 
-    st.session_state.messages.append(
+st.session_state.messages.append(
         {
             "role": "assistant",
             "content": answer
