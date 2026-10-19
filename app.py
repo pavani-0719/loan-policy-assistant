@@ -127,7 +127,6 @@ if question:
                 {
                     "role": "user",
                     "content": f"""
-                    }
 Translate the following loan-related question into English.
 
 Return ONLY the translated question.
@@ -136,27 +135,11 @@ Do not explain anything.
 Question:
 {question}
 """
-       
-response = client.chat(
-    model="llama3.2",
-    messages=[
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ]
-)
+                }
+            ]
+        )
 
-# Read the response safely
-if isinstance(response, dict):
-    answer = response.get("message", {}).get("content", "")
-else:
-    answer = response.message.content
-
-if not answer:
-    st.error("The AI service returned an empty answer. Please check the app logs.")
-    st.stop()
-
+        question = translation_response["message"]["content"]
 
 
     # -----------------------------
@@ -243,23 +226,26 @@ User Question:
 """
 
 
-    response = client.chat(
-        model="llama3.2",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
 
-st.write("DEBUG: reached response section")
-st.write("DEBUG: client exists:", "client" in globals())
-    # -----------------------------
-    # Get Llama's answer
-    # -----------------------------
+response = client.chat(
+    model="llama3.2",
+    messages=[
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+)
 
-answer = response["message"]["content"]
+# Read the response safely
+if isinstance(response, dict):
+    answer = response.get("message", {}).get("content", "")
+else:
+    answer = response.message.content
+
+if not answer:
+    st.error("The AI service returned an empty answer. Please check the app logs.")
+    st.stop()
 
 
     # -----------------------------
