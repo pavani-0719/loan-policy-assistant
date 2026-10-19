@@ -191,37 +191,23 @@ Question:
     # Ask Llama
     # -----------------------------
 
-    prompt = f"""
+    
+prompt = f"""
 You are a Loan Policy Assistant.
 
-Answer the user's question using ONLY
-the information contained in the retrieved
-loan policy documents.
+Answer the user's question using ONLY the information
+contained in the retrieved loan policy documents.
 
-IMPORTANT RULES:
+Do not invent information, interest rates, fees,
+or eligibility criteria.
 
-1. Do not invent information.
-2. Do not create loan policies.
-3. Do not make up interest rates.
-4. Do not make up eligibility criteria.
-5. Do not make up fees or charges.
-6. If the answer is not available in the
-   documents, say:
-
-"I could not find this information
-in the available loan policy documents."
-
-7. Give clear and simple answers.
-8. Mention important conditions when
-   they are available.
-9. Use bullet points when useful.
+If the answer is not available in the documents, say:
+"I could not find this information in the available loan policy documents."
 
 Retrieved Documents:
-
 {context}
 
 User Question:
-
 {question}
 """
 
