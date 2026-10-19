@@ -262,7 +262,7 @@ User question:
             "Please check the app logs."
         )
 
-        # Log the error without displaying credentials.
-        print(
-            f"Chat error: {type(error).__name__}: {error}"
-        )
+    except Exception as error:
+        st.error("An error occurred while processing your question.")
+        st.exception(error)
+        print(f"Chat error: {type(error).__name__}: {error}")
