@@ -43,7 +43,7 @@ client = ollama.Client(
     headers={"Authorization": f"Bearer {api_key}"},
 )
 
-MODEL_NAME = "llama3.2"
+MODEL_NAME = "gemma4:31b-cloud"
 
 # --------------------------------------------------
 # 4. Language selection
